@@ -1,0 +1,706 @@
+\def\code{\halign\bgroup\tt\qquad##\hfil&\qquad\tt##\hfil\cr}
+\def\ecode{\egroup}
+\def\listing{\halign\bgroup\tt##\hfil&\qquad\tt##\hfil&\qquad\tt##\hfil\cr}
+\def\elisting{\egroup}
+
+\newcount\pagenumber
+\pagenumber=0
+\def\page{\par\advance\pagenumber by 1\relax\rightline{\the\pagenumber}%
+\medskip\hrule\medskip}
+
+\footline={}
+
+\null\vfil
+
+\centerline{\bf X0 : The first LPUP}
+\smallskip
+\centerline{Lilly H. St Claire}
+\smallskip
+\hrule
+\smallskip
+
+\leftline{\bf Scope:}
+\noindent This document is a transcription of my notes on paper, lightly
+cleaning various issues in form. As such the scope of this document is to
+act as a vague estimate as to what work went into the construction of X0.
+
+\leftline{\bf Usage:}
+\code
+	x < input > output\cr
+\ecode
+
+\leftline{\bf Description:}
+\noindent Takes, from stdin, a sequence of whitespaec/comment delimited
+tokens and treats their values as uppercase hexadecimal values (without error
+for invalid characters). The low byte of each token shall be put to stdout.
+
+\leftline{\bf Examples:}
+\code
+	\# "Hello World"&\cr
+	48 69 6C 6C 6F 20 77 6F 72 66 64 21&\cr
+\ecode
+\medskip
+\code
+	B8 48 0E&\# MOV AX 0E48H\cr
+	CD 10&\# INT 10\cr
+	41&\# INC AX\cr
+	CD 10&\# INT 10\cr
+	B0 21&\# MOV AL, 21H\cr
+	CD 10&\# INT 10\cr
+\ecode
+\smallskip\hrule
+\vfil\break
+
+\null\vfil
+
+X0 takes in hex digits seperated by spaces and comments, which will cause the
+least significant byte specified to be read.
+
+In this vein we have the following functions:
+\item{$\circ$}	{\tt getchar: void -> char}
+	Returns a single character from stdin.
+\item{$\circ$}	{\tt putchar: char -> void}
+	Outputs a character from stdin.
+\item{$\circ$}	{\tt iswsp: char -> bool}
+	Returns whether or not the current character is a whitespace character.
+
+And the following states:
+\item{$\circ$}	{\tt \_start}
+	The entry point of the program.
+\item{$\circ$}	{\tt wsp}
+	Skip whitespace/comments.
+\item{$\circ$}	{\tt shiftin}
+	Read hex digits until whitespace/comment.
+\page
+
+\code
+	c = getchar()\cr
+	wsp:\cr
+	if c = '\char`\\n'\cr
+	\qquad comment = 0\cr
+	if comment of c = ' ' or\cr
+	c = '\char`\\t' or c = '\char`\\r' or\cr
+	c = '\char`\\n'\cr
+	\qquad c = getchar()\cr
+	\qquad goto wsp
+	if c = '\#'\cr
+	\qquad comment = 1\cr
+	\qquad goto wsp\cr
+	goto shiftin\cr
+\ecode
+\page
+
+\code
+	shiftin:\cr
+	data = 0\cr
+	.loop:\cr
+	c -= '0'\cr
+	if c > 9\cr
+	\qquad c -= 7\cr
+	c \&= 0Fh\cr
+	data <<= 4\cr
+	data |= c\cr
+	c = getchar()\cr
+	if c = '\#'\cr
+	\qquad comment = 1\cr
+	if comment or c = ' '\cr
+	or c = '\char`\\n' or c = '\char`\\t'\cr
+	or c = '\char`\\r'\cr
+	\qquad putchar(data \& 0FFh)\cr
+	\qquad goto wsp\cr
+	goto .loop\cr
+\ecode
+\page
+
+\vfil\break
+
+\null\vfil
+
+\code
+	putchar:\cr
+	save (c, comment, cl)\cr
+	rdi = 1\cr
+	rax = rdi\cr
+	rdx = rdi\cr
+	push data\cr
+	rsi = rsp\cr
+	syscall\cr
+	pop data\cr
+	load (c, comment, cl)\cr
+	return\cr
+\ecode
+
+\noindent Note that data is always the argument to putchar.
+\page
+
+\code
+	getchar:\cr
+	save (data, comment, cl)\cr
+	rax = 0\cr
+	rdi = rax\cr
+	rdx = 1\cr
+	push 0\cr
+	rsi = rsp\cr
+	syscall\cr
+	pop ret\cr
+	return ret\cr
+\ecode
+
+\noindent Note that 'c' is a vessel for getchar and thus may be directly linked
+via register.
+\page
+
+\vfil\break
+
+\null\vfil
+
+\leftline{\bf Required Registers:}
+\item{$\circ$} {\tt c: char -> al}
+\item{$\circ$} {\tt data: byte -> dl}
+\item{$\circ$} {\tt comment: bool -> bl}
+\item{$\circ$} {\tt iswsp: bool -> bh}
+
+\code
+	\_start:\cr
+	\qquad xor bx,bx\cr
+	\qquad call gtchar\cr
+	wsp:\cr
+	\qquad cmp al, 0Ah\cr
+	\qquad jne 0f\cr
+	\qquad xor bl, bl\cr
+	0:\cr
+	\qquad or bl, bl\cr
+	\qquad jz 0f\cr
+	\qquad call iswsp\cr
+	\qquad or bh, bh\cr
+\ecode
+\page
+
+\code
+	wsp:\cr
+	\qquad cmp al, 0Ah\cr
+	\qquad jne 0f\cr
+	\qquad xor bl, bl\cr
+	0:\cr
+	\qquad or bl, bl\cr
+	\qquad jnz 0f\cr
+	\qquad call iswsp\cr
+	\qquad or bh, bh\cr
+	\qquad jz 1f\cr
+	0:\cr
+	\qquad call getchar\cr
+	\qquad jmp wsp\cr
+	1:\cr
+	\qquad cmp al, '\#'\cr
+	\qquad jne shiftin\cr
+	\qquad mov bl, 0ffh\cr
+	\qquad jmp wsp\cr
+\ecode
+\smallskip
+\hrule
+\smallskip
+\code
+	\_start:\cr
+	\qquad xor ebx, ebx\cr
+	\qquad mov cl, 04h\cr
+	\qquad call getchar\cr
+\ecode
+\page
+
+\vfil\break
+
+\null\vfil
+
+\code
+	shiftin:\cr
+	\qquad xor dx, dx\cr
+	.loop:\cr
+	\qquad sub al, 30h\cr
+	\qquad cmp al, 0Ah\cr
+	\qquad jb 0f\cr
+	\qquad sub al, 07h\cr
+	0:
+	\qquad and al, 0Fh\cr
+	\qquad shl dx, cl\cr
+	\qquad or dl, al\cr
+	\qquad call getchar\cr
+	\qquad cmp al, '\#'\cr
+	\qquad je 0f\cr
+	\qquad call iswsp\cr
+	\qquad or bh, bh\cr
+	\qquad jz 1f\cr
+	0:
+	\qquad call putchar\cr
+	\qquad jmp wsp\cr
+	1:
+	\qquad jmp .loop\cr
+\ecode
+\page
+
+\code
+	putchar:\cr
+	\qquad push rax\cr
+	\qquad push rbx\cr
+	\qquad push rcx\cr
+	\qquad push rdx\cr
+	\qquad xor eax, eax\cr
+	\qquad mov al, 01h\cr
+	\qquad mov edi, eax\cr
+	\qquad mov edx, eax\cr
+	\qquad mov rsi, rsp\cr
+	\qquad syscall\cr
+	\qquad pop rdx\cr
+	\qquad pop rcx\cr
+	\qquad pop rbx\cr
+	\qquad pop rax\cr
+	\qquad ret\cr
+\ecode
+\page
+
+\vfil\break
+
+\null\vfil
+
+\code
+	getchar:\cr
+	\qquad push rbx\cr
+	\qquad push rcx\cr
+	\qquad push rdx\cr
+	\qquad xor eax, eax\cr
+	\qquad xor edi, edi\cr
+	\qquad xor edx, edx\cr
+	\qquad mov dl, 01h\cr
+	\qquad push rax\cr
+	\qquad mov rsi, rsp\cr
+	\qquad syscall\cr
+	\qquad pop rax\cr
+	\qquad pop rdx\cr
+	\qquad pop rcx\cr
+	\qquad pop rbx\cr
+	\qquad ret\cr
+\ecode
+\smallskip
+\hrule
+\smallskip
+\code
+	iswsp:\cr
+	\qquad xor bh, bh\cr
+	\qquad cmp al, 20h\cr
+	\qquad je 0f\cr
+	\qquad cmp al, 09h\cr
+	\qquad je 0f\cr
+	\qquad cmp al, 0Ah\cr
+	\qquad je 0f\cr
+	\qquad cmp al, 0Dh\cr
+	\qquad je 0f\cr
+	\qquad ret\cr
+	0:\cr
+	\qquad not bh\cr
+	\qquad ret\cr
+\ecode
+\page
+
+\vfil\break
+
+\null\vfil
+
+\leftline{\bf X0V1 full listing}
+\listing
+40078&\_start:\cr
+40078&xor ebx,ebx&31 DB\cr
+4007A&mov cl,04&B1 04\cr
+4007C?&call getchar&E8 5F 00 00 00\cr
+40081&wsp:\cr
+40081&cmp al,0Ah&3C 0A\cr
+40083?&jne 0f&75 02\cr
+40085&xor bl,bl&30 DB\cr
+40087&0:\cr
+40087&or bl,bl&08 DB\cr
+40089?&jnz 0f&75 09\cr
+4008B?&call iswsp&E8 66 00 00 00\cr
+40090&or bh,bh&08 FF\cr
+40092?&jz 1f&74 07\cr
+40094&0:\cr
+40094?&call getchar&E8 47 00 00 00\cr
+40099?&jmp wsp&EB E6\cr
+4009B&1:\cr
+4009B&cmp al,'\#'&3C 23\cr
+4009D&jne shiftin&75 04\cr
+4009F&mov bl,0FFH&B3 FF\cr
+400A1?&jmp wsp&EB DE\cr
+400A3&shiftin:\cr
+\elisting
+\page
+
+\listing
+400A3&shiftin:\cr
+400A3&xor edx,edx&31 D2\cr
+400A5&.loop:\cr
+400A5&sub al,30h&2C 30\cr
+400A7&cmp al,0Ah&3C 0A\cr
+400A9?&jb 0f&72 02\cr
+400AB&sub al,07h&2C 07\cr
+400AD&0:\cr
+400AD*&shl edx,cl&D3 E2\cr
+400AF&or dl,al&08 C2\cr
+400B1?&call getchar&E8 2A 00 00 00\cr
+400B6&cmp al,'\#'&3C 23\cr
+400B8?&je 0f&74 09\cr
+400BA?&call iswsp&E8 3A 00 00 00\cr
+400BF&or bh,bh&08 FF\cr
+400C1?&jz .loop&74 E2\cr
+400C3&0:\cr
+400C3$\dagger$?&call putchar&E8 02 00 00 00\cr
+400C8?&jmp wsp&EB B7\cr
+400CA&putchar:\cr
+\elisting
+
+\noindent {\sl* Maybe we could use {\tt SAL r/m32,i8 :: C1 /4 ib} in order to
+avoid reserving rcx.}
+
+\noindent {\sl$^{\dagger}$ We could likely inline putchar and save the call.}
+
+\page
+
+\vfil\break
+
+\null\vfil
+
+\listing
+400CA&putchar:\cr
+400CA&push rax&50\cr
+400CB&push rbx&53\cr
+400CC&push rcx&51\cr
+400CD&push rdx&52\cr
+400CE&xor eax,eax&31 C0\cr
+400D0&mov al,01h&B0 01\cr
+400D2&mov edi,eax&89 C7\cr
+400D4&mov edx,eax&89 C2\cr
+400D6&mov rsi,rsp&48 89 E6\cr
+400D9&syscall&0F 05\cr
+400DB&pop rdx&5A\cr
+400DC&pop rcx&59\cr
+400DD&pop rbx&5B\cr
+400DE&pop rax&58\cr
+400DF&ret&C3\cr
+400E0&getchar:\cr
+400E0&push rbx&53\cr
+400E1&push rcx&51\cr
+400E2&push rdx&52\cr
+400E3&xor eax,eax&31 C0\cr
+400E5&xor edi,edi&31 FF\cr
+400E7&xor edx,edx&31 D2\cr
+400E9&mov dl,01h&B2 01\cr
+400EB&push rax&50\cr
+400EC&mov rsi,rsp&48 89 E6\cr
+400EF&syscall&0F 05\cr
+400F1&pop rax&58\cr
+400F2&pop rdx&5A\cr
+400F3&pop rcx&59\cr
+400F4&pop rbx&5B\cr
+400F5&ret&C3\cr
+400F6&iswsp:\cr
+\elisting
+\page
+
+\listing
+400F6&iswsp:\cr
+400F6&xor bh,bh&30 FF\cr
+400F8&cmp al,20h&3C 20\cr
+400FA?&je 0f&74 0D\cr
+400FC&cmp al,09h&3C 09\cr
+400FE?&je 0f&74 09\cr
+40100&cmp al,0Ah&3C 0A\cr
+40102?&je 0f&74 05\cr
+40104&cmp al,0Dh&3C 0D\cr
+40106?&je 0f&74 01\cr
+40108&ret&C3\cr
+40109&0:\cr
+40109&not bh&FC D7\cr
+4010B&ret&C3\cr
+4010C\cr
+\elisting
+\page
+
+\vfil\break
+
+\null\vfil
+
+\leftline{\bf ELF header + program header}
+
+\noindent Note that filesize/memsize may change between listings, 200 ought to
+be a safe enough bet.
+
+\halign{\tt#\hskip2em&\tt#\hfil\hskip1em\vrule\hskip2pt&\hskip2pt\vrule%
+\hskip1em\hfil\tt#\cr
+40000&7F 45 4C 46&02 01 01 00\cr
+40008&00 00 00 00&00 00 00 00\cr
+40010&02 00 3E 00&01 00 00 00\cr
+40018&78 00 04 00&00 00 00 00\cr
+40020&40 00 00 00&00 00 00 00\cr
+40028&00 00 00 00&00 00 00 00\cr
+40030&00 00 00 00&40 00 38 00\cr
+40038&01 00 00 00&00 00 00 00\cr
+40040&01 00 00 00&05 00 00 00\cr
+40048&00 00 00 00&00 00 00 00\cr
+40050&00 00 04 00&00 00 00 00\cr
+40058&00 00 00 00&00 00 00 00\cr
+40060&00 02 00 00&00 00 00 00\cr
+40068&00 02 00 00&00 00 00 00\cr
+40070&00 00 00 00&00 00 00 00\cr
+40078&00 00 00 00&00 00 00 00\cr
+}
+\halign{\tt@#:\hfil&\tt#\hskip1em\hfil&\tt@#:\hfil&\tt#\hskip1em\hfil%
+&@#:\hfil&\tt#\hskip1em\hfil\cr
+0&ELF magic&4&64 bit&5&2LSB\cr
+6&EV\_CURRENT&7&OSABI\_SYSV&8&ABI\_VERSION\cr
+10&Exec type&12&x86\_64&14&EV\_CURRENT\cr
+18&40078 (entry)&20&40 (phoff)&28&00 (shoff)\cr
+30&0 (flags)&34&40 (ehsize)&36&38 (phentsize)\cr
+38&1 (phnum)&3A&0 (shentsize)&3C&0 (shnum)\cr
+3E&0 (shstrndx)&40&PT\_LOAD&44&PF\_X | PF\_R\cr
+48&0 (offset)&50&40000 (vaddr)&58&0 (paddr)\cr
+60&200ish (filesize)&68&200ish (memsize)&70&0 (align)\cr
+78\cr
+}
+\page
+
+\vfil\break
+
+\null\vfil
+
+\leftline{\bf Version 2}
+
+\noindent We forgot to put in an exit condition, and there were a few errors
+bloating the filesize (alongside a basic errror in the shiftin routine haha).
+
+\item{1.} getchar/putchar arent fixed functions in the pipeline and require
+a call, of which there are multiple.
+
+\item{2.} {\tt CL} is reserved unnecessarily
+
+\item{3.} Forgot the exit condition.
+
+As such:
+
+\code
+	\_start:\cr
+	\qquad init vars\cr
+	loop:\cr
+	getchar:\cr
+	\qquad syscall ...\cr
+	\qquad if size is zero:\cr
+	\qquad\qquad exit ...\cr
+	\qquad al = result\cr
+	wsp:\cr
+	\qquad if al $=$ ' ' -> space\cr
+	\qquad if al $=$ '\char`\\t' -> space\cr
+	\qquad if al $=$ '\char`\\r' -> space\cr
+	\qquad if al $=$ '\char`\\n' -> newline\cr
+	\qquad if al $\neq$ '\#' -> shiftin\cr
+	\qquad comment = 1\cr
+	\qquad -> space\cr
+	newline:\cr
+	\qquad comment = 0\cr
+	space:\cr
+\ecode
+\page
+
+\code
+	space:\cr
+	\qquad if dh $\neq$ 0:\cr
+	\qquad al -= 30\cr
+	\qquad if al $>$ 9:\cr
+	\qquad\qquad al -= 7\cr
+	\qquad al \&= 0F\cr
+	\qquad edx <<= 4\cr
+	\qquad dl |= al\cr
+	\qquad dh = 0\cr
+	\qquad -> loop\cr
+\ecode
+
+\noindent al, dl, bl and dh are reserved:
+\item{al:} getchar result.
+\item{dl:} input data.
+\item{bl:} comment flag.
+\item{dh:} data set flag.
+\page
+
+\vfil\break
+
+\null\vfil
+
+\code
+	\_start:\cr
+	\qquad xor ebx, ebx\cr
+	\qquad xor edx, edx\cr
+	loop:&\# getchar\cr
+	\qquad push rbx\cr
+	\qquad push rdx\cr
+	\qquad xor eax, eax\cr
+	\qquad xor edi, edi\cr
+	\qquad xor edx, edx\cr
+	\qquad mov dl, 01h\cr
+	\qquad push rax\cr
+	\qquad mov rsi, rsp\cr
+	\qquad syscall\cr
+	\qquad or eax, eax\cr
+	\qquad jnz 0f\cr
+	\qquad \# exit\cr
+	\qquad mov al, 3Ch\cr
+	\qquad xor edi, edi\cr
+	\qquad syscall\cr
+	0:\cr
+	\qquad pop rax\cr
+	\qquad pop rdx\cr
+	\qquad pop rbx\cr
+	wsp:\cr
+\ecode
+\page
+
+\code
+	wsp:\cr
+	\qquad cmp al, ' '\cr
+	\qquad je 0f\cr
+	\qquad cmp al, '\char`\\t'\cr
+	\qquad je 0f\cr
+	\qquad cmp al, '\char`\\r'\cr
+	\qquad je 0f\cr
+	\qquad cmp al, '\char`\\n'\cr
+	\qquad je 1f\cr
+	\qquad cmp al, '\#'\cr
+	\qquad jne shiftin\cr
+	\qquad mov bl, 0FFh\cr
+	\qquad jmp 0f\cr
+	1:\cr
+	\qquad xor bl, bl\cr
+	0:\cr
+	\qquad or dh, dh\cr
+	\qquad jz loop\cr
+	\qquad push rbx\cr
+	\qquad push rdx
+	\qquad xor eax, eax
+	\qquad mov al, 01h\cr
+	\qquad mov edi, eax\cr
+	\qquad mov edx, eax\cr
+	...\cr
+\ecode
+\page
+
+\vfil\break
+
+\null\vfil
+
+\code
+	...\cr
+	\qquad mov rsi, rsp\cr
+	\qquad syscall\cr
+	\qquad pop rdx\cr
+	\qquad pop rbx\cr
+	\qquad xor dh, dh\cr
+	\qquad jmp loop\cr
+	shiftin:\cr
+	\qquad sub al, 30h\cr
+	\qquad cmp al, 0Ah\cr
+	\qquad jb 0f\cr
+	\qquad sub al, 07h\cr
+	0:\cr
+	\qquad and al, 0Fh\cr
+	\qquad sal edx, 04h\cr
+	\qquad or dl, al\cr
+	\qquad mov dh, 0FFh\cr
+	\qquad jmp loop\cr
+\ecode
+\page
+
+\vfil\break
+
+\null\vfil
+
+\leftline{\bf X0V2 full listing}
+\listing
+40078&\_start:\cr
+40078&xor ebx,ebx&31 DB\cr
+4007A&xor edx,edx&31 D2\cr
+4007C&loop:\cr
+4007C&push rbx&53\cr
+4007D&push rdx&52\cr
+4007E&xor eax,eax&31 C0\cr
+40080&xor edi,edi&31 FF\cr
+40082&xor edx,edx&31 D2\cr
+40084&mov dl,01h&B2 01\cr
+40086&push rax&50\cr
+40087&mov rsi, rsp&48 89 E6\cr
+4008A&syscall&0F 05\cr
+4008C&or eax,eax&09 C0\cr
+4008E?&jnz 0f&75 06\cr
+40090&mov al,3Ch&B0 3C\cr
+40092&xor edi,edi&31 FF\cr
+40094&syscall&0F 05\cr
+40096&0:\cr
+40096&pop rax&58\cr
+40097&pop rdx&5A\cr
+40098&pop rbx&5B\cr
+40099&wsp:\cr
+\elisting
+\page
+
+\vfil\break
+
+\null\vfil
+
+\listing
+40099&wsp:\cr
+40099&cmp al,20h&3C 20\cr
+4009B?&je 0f&74 1A\cr
+4009D&cmp al,09h&3C 09\cr
+4009F?&je 0f&74 16\cr
+400A1&cmp al,0Dh&3C 0D\cr
+400A3?&je 0f&74 12\cr
+400A5&cmp al,0Ah&3C 0A\cr
+400A7?&je 1f&74 0C\cr
+400A9&or bl,bl&08 DB\cr
+400AB&jnz loop&75 CF\cr
+400AD&cmp al,23h&3C 23\cr
+400AF&jne shiftin&75 1F\cr
+400B1&mov bl,0FF&B3 FF\cr
+400B3?&jmp 0f&EB 02\cr
+400B5&1:\cr
+400B5&xor bl,bl&31 DB\cr
+400B7&0:\cr
+400B7&or dh,dh&08 F6\cr
+400B9?&jz loop&74 C1\cr
+400BB&push rbx&53\cr
+400BC&push rdx&52\cr
+400BD&xor eax,eax&31 C0\cr
+400BF&mov al, 01h&B0 01\cr
+400C1&mov edi,eax&89 C7\cr
+400C3&mov edx,eax&89 C2\cr
+400C5&mov rsi,rsp&48 89 E6\cr
+400C8&syscall&0F 05\cr
+400CA&pop rdx&5A\cr
+400CB&pop rbx&5B\cr
+400CC&xor dh,dh&30 F6\cr
+400CE?&jmp loop&EB B0\cr
+\elisting
+\page
+
+\listing
+400D0&shiftin:\cr
+400D0&sub al,30h&2C 30\cr
+400D2&cmp al,0Ah&3C 0A\cr
+400D4&jb 0f&72 02\cr
+400D6&sub al,07h&2C 07\cr
+400D8&0:\cr
+400D8&and al,0Fh&24 0F\cr
+400DA&sal edx,04h&C1 E2 04\cr
+400DD&or dl,al&08 C2\cr
+400DF&mov dh,0FFh&B6 FF\cr
+400E1&jmp loop&EB 99\cr
+400E3\cr
+\elisting
+\page
+
+\vfil\break
+
+\bye
